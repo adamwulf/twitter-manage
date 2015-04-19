@@ -37,6 +37,16 @@ if(isset($_GET["logout"])){
 }
 
 
+if(isset($_GET["cron"])){
+	$results = $db->table("twitter_login")->find();
+	while($row = $results->fetch_array()){
+		$twitter = new EasyAppTwitter($row);
+		
+		echo $twitter->avatar() . "<br>";
+	}
+	
+}
+
 
 // now show UI
 
@@ -53,8 +63,12 @@ if($app->isLoggedIn()){
 	echo "<a href='" . page_self_url() . "?twitter_login" . "'>";
 	echo "<img src='" . page_self_url() . "images/sign-in-with-twitter-gray.png' border=0/>";
 	echo "</a>";
-
 }
+
+
+echo print_r($app->sessionInfo());
+
+
 
 
 
