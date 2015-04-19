@@ -66,12 +66,6 @@ if($app->isLoggedIn()){
 }
 
 
-echo print_r($app->sessionInfo());
-
-
-
-
-
 
 
 ?>
