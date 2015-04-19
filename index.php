@@ -43,8 +43,14 @@ if(isset($_GET["cron"])){
 		$twitter = new EasyAppTwitter($row);
 		
 		echo $twitter->avatar() . "<br>";
+
+		print_r($twitter->followersFor("explainevrythng"));
+		echo "<br>";
+
 	}
 	
+	
+	die();
 }
 
 
