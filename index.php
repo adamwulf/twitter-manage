@@ -47,7 +47,8 @@ $my_name = $app->isLoggedIn() ? $app->twitter()->screenname() : "anonymous";
 echo "hello, " . $my_name . "<br>";
 
 if($app->isLoggedIn()){
-	echo "logged in";
+	echo "logged in<br>";
+	echo "<a href='" . page_self_url() . "?logout" . "'>Log Out</a><br>";
 }else{
 	echo "<a href='" . page_self_url() . "?twitter_login" . "'>";
 	echo "<img src='" . page_self_url() . "images/sign-in-with-twitter-gray.png' border=0/>";
