@@ -42,9 +42,13 @@ if(isset($_GET["cron"])){
 	while($row = $results->fetch_array()){
 		$twitter = new EasyAppTwitter($row);
 		
-		echo $twitter->avatar() . "<br>";
+		echo $twitter->screenname() . ": " . $twitter->avatar() . "<br>";
+		
+		$obj = $twitter->fetchSomeTwitterInfo();
+		
+		prettyPrint((array)$obj);
 
-		print_r($twitter->followersFor("explainevrythng"));
+// 		prettyPrint($twitter->followersFor("explainevrythng"));
 		echo "<br>";
 
 	}
@@ -54,17 +58,62 @@ if(isset($_GET["cron"])){
 }
 
 
-// now show UI
 
+// process app requests
 
-$my_name = $app->isLoggedIn() ? $app->twitter()->screenname() : "anonymous";
-
-
-echo "hello, " . $my_name . "<br>";
 
 if($app->isLoggedIn()){
-	echo "logged in<br>";
-	echo "<a href='" . page_self_url() . "?logout" . "'>Log Out</a><br>";
+	$my_name = $app->twitter()->screenname();
+	if(isset($_REQUEST["stop_autofollow_id"])){
+		$id_to_delete = (int) $_REQUEST["stop_autofollow_id"];
+		if($db->table("auto_follow")->find(array("id" => $id_to_delete, "screen_name" => $my_name))->num_rows() == 1){
+			$db->table("auto_follow")->delete(array("id" => $id_to_delete, "screen_name" => $my_name));
+		}else{
+			$msg = "error: couldn't stop autofollowing";
+		}
+		header("Location: " . page_self_url() . "?msg=" . urlencode($msg));
+		exit;
+	}
+	if(isset($_REQUEST["autofollow"])){
+		$nameToFollow = $_REQUEST["autofollow"];
+		$aboutThem = $app->twitter()->profileFor($nameToFollow);
+		
+		
+		if($db->table("auto_follow")->find(array("to_follow" => $nameToFollow))->num_rows()){
+			$msg = "already autofollowing $nameToFollow's followers";
+		}else{
+			$to_save = array(
+				"screen_name" => $my_name,
+				"name" => $aboutThem["name"],
+				"to_follow" => $nameToFollow,
+				"followers_count" => $aboutThem["followers_count"],
+				"followed" => 0,
+				"description" => $aboutThem["description"]
+			);
+			$db->table("auto_follow")->validateTableFor($to_save);
+			$db->table("auto_follow")->save($to_save);
+		}
+		header("Location: " . page_self_url() . "?msg=" . urlencode($msg));
+		exit;
+	}
+}
+
+
+
+
+echo "<html><head><link rel=stylesheet type='text/css' href='style.css'/></head><body>";
+
+// now show UI
+if($app->isLoggedIn()){
+	$my_name = $app->twitter()->screenname();
+	echo "logged in as " . $my_name . " ";
+	echo "<a href='" . page_self_url() . "?logout" . "'>Log Out</a><br><br>";
+	
+	if(isset($_REQUEST["msg"]) && strlen($_REQUEST["msg"])){
+		echo "<div class='message'>" . $_REQUEST["msg"] . "</div>";
+	}
+	
+	include "tables/auto-follow.php";
 }else{
 	echo "<a href='" . page_self_url() . "?twitter_login" . "'>";
 	echo "<img src='" . page_self_url() . "images/sign-in-with-twitter-gray.png' border=0/>";
@@ -72,6 +121,6 @@ if($app->isLoggedIn()){
 }
 
 
-
+echo "</body></html>";
 
 ?>
