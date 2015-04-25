@@ -21,15 +21,22 @@
 	</tr>
 
 <?
-$results = $db->table("auto_follow")->find();
+
+$my_name = $app->twitter()->screenname();
+$results = $db->table("auto_follow")->find(array("screen_name" => $my_name));
 
 while($row = $results->fetch_array()){
 	echo "<tr>";
 	echo "<td>" . htmlspecialchars($row["to_follow"]) . "</td>";
 	echo "<td>" . htmlspecialchars($row["name"]) . "</td>";
-	echo "<td>" . htmlspecialchars($row["followers_count"]) . "</td>";
-	echo "<td>" . ((int)$row["followed_so_far"]) . "</td>";
-	echo "<td>" . htmlspecialchars($row["description"]) . "</td>";
+	echo "<td><a href='?show_followers_for=" . $row["to_follow"] . "'>" . htmlspecialchars($row["followers_count"]) . "</a></td>";
+	echo "<td>";
+	$num_followed = $db->table("followers")->find(array("owner_account" => $my_name, 
+														"found_via" => $row["to_follow"],
+														"auto_followed_on" => ""),
+												  array("auto_followed_on" => "!="));
+	echo $num_followed->num_rows();
+	echo "</td>";
 	echo "<td>" . htmlspecialchars($row["description"]) . "</td>";
 	echo "<td>";
 	echo "<form action='" . page_self_url() . "' method=post>";
@@ -43,7 +50,7 @@ while($row = $results->fetch_array()){
 
 
 	<tr>
-		<td colspan=5>
+		<td colspan=6>
 			<form action="<?=page_self_url()?>" method=POST>
 				Auto follow <input type='text' name='autofollow'>'s followers
 				<input type='submit'>
