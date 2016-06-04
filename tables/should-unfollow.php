@@ -3,7 +3,8 @@
 $my_name = $app->twitter()->screenname();
 $results = $db->table("followers")->find(array("owner_account" => $my_name, 
 											   "auto_followed_on" => date("Y-m-d", time()-24*60*60*7),
-											   "is_following_them" => 1),
+											   "is_following_them" => 1,
+											   "is_following_us" => 0),
 										 array("auto_followed_on" => "<="));
 
 if(!$results->num_rows()){
@@ -38,7 +39,7 @@ if(!$results->num_rows()){
 while($row = $results->fetch_array()){
 	if($row["auto_followed_on"]){
 		echo "<tr>";
-		echo "<td>" . htmlspecialchars($row["screen_name"]) . "</td>";
+		echo "<td><a href='http://twitter.com/" . htmlspecialchars($row["screen_name"]) . "'>" . htmlspecialchars($row["screen_name"]) . "</a></td>";
 		echo "<td>" . htmlspecialchars($row["auto_followed_on"]) . "</td>";
 		echo "<td>" . htmlspecialchars($row["is_following_us"] ? "Yes" : "No") . "</td>";
 		echo "<td>" . htmlspecialchars($row["un_followed_on"]) . "</td>";

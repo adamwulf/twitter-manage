@@ -22,19 +22,26 @@ if(isset($_GET["cron"])){
 		//
 		// this will track which users are following
 		// our target user, as well as if they're following us
+		echo "=================<br>\n";
+		echo "Logged in as <strong>" . $twitter->screenname() . "</strong><br>\n";
+		echo "checking on follower lists to refresh...<br>\n";
 		$results = $db->table("auto_follow")->find(array("last_update" => date("Y-m-d", time()-24*60*60),
 														 "screen_name" => $twitter->screenname()),
 													array("last_update" => "<="));
-		if($user_to_leech = $results->fetch_array()){
-			echo "refreshing follower list of " . $user_to_leech["to_follow"] . " on behalf of " . $twitter->screenname() . "<br>";
+		while($user_to_leech = $results->fetch_array()){
+			echo " - refreshing follower list of " . $user_to_leech["to_follow"] . " on behalf of " . $twitter->screenname() . "<br>\n";
 			
 			$cur = $user_to_leech["cursor"] ? $user_to_leech["cursor"] : -1;
-			$followers = $twitter->followersFor($user_to_leech["to_follow"], $cur);
+			if($user_to_leech["to_follow"] == $twitter->screenname()){
+				$followers = $twitter->followingFor($user_to_leech["to_follow"], $cur);
+			}else{
+				$followers = $twitter->followersFor($user_to_leech["to_follow"], $cur);
+			}
 			
 			if($followers["error"]){
-				echo "error: <br>";
+				echo " - - error: <br>\n";
 				prettyPrint((array)$followers["error"]);
-				echo "<br>";
+				echo "<br>\n";
 			}else{
 				// update followers
 				if(!$followers["next_cursor"]){
@@ -42,9 +49,9 @@ if(isset($_GET["cron"])){
 					$db->table("auto_follow")->save(array("id" => $user_to_leech["id"],
 														  "last_update" => date("Y-m-d"),
 														  "cursor" => ""));
-					echo "refreshed all followers, marking as updated";
+					echo " - - refreshed all followers, marking as updated";
 				}else{
-					echo "have next cursor: " . $followers["next_cursor"];
+					echo " - - have next cursor: " . $followers["next_cursor"];
 					
 					$update_cursor = array("id" => $user_to_leech["id"],
 										   "cursor" => $followers["next_cursor"]);
@@ -71,108 +78,133 @@ if(isset($_GET["cron"])){
 							$follow_info["protected"] = $follower["protected"];
 							$follow_info["follow_status_updated_on"] = "";
 							
+							if($user_to_leech["to_follow"] == $twitter->screenname()){
+								$follow_info["auto_followed_on"] = date("Y-m-d");
+							}
+							
 							$db->table("followers")->save($follow_info);
 						}
 					}
 				}
-				echo "found " . count($followers) . " to update";
+				echo " - - found " . count($followers) . " to update<br>\n";
 			}
 		}
 		
 		
-		// slowly update the following status of the users
-		$users_to_update_status = $db->table("followers")->find(array("owner_account" => $twitter->screenname(), 
-																	  "follow_status_updated_on" => date("Y-m-d")),
-																array("follow_status_updated_on" => "!="));;
-
-		echo "need to update follow status for " . $users_to_update_status->num_rows() . " users<br>";
-		if($user = $users_to_update_status->fetch_array()){
-			$status = $twitter->connectionStatus($user["screen_name"]);
-			if($status["error"]){
-				echo "API error<br>";
-			}else{
-				prettyPrint($status);
-				if(in_array("following", $status)){
-					echo "we're already following " . $user["screen_name"] . "<br>";
-					if(!$user["auto_followed_on"]){
-						$user["auto_followed_on"] = date("Y-m-d");
-					}
-					$user["is_following_them"] = true;
-				}else{
-					$user["is_following_them"] = false;
-				}
-				if(in_array("followed_by", $status)){
-					$user["is_following_us"] = true;
-				}else{
-					$user["is_following_us"] = false;
-				}
-				$user["follow_status_updated_on"] = date("Y-m-d");
-				$db->table("followers")->save($user);
-			}
-		}
-		
-		
-		
-		
-		//
-		// next, find out if we need to follow any more users
-		// from this account today. limit to following 20 / day
-		
-		$num_followed = $db->table("followers")->find(array("owner_account" => $twitter->screenname(), 
-													"auto_followed_on" => date("Y-m-d")))->num_rows();
-
-		echo "num followed today: " . $num_followed . "<br>";
-		if($num_followed < MAX_FOLLOW_PER_DAY){
-			$users_to_follow = $db->table("followers")->find(array("owner_account" => $twitter->screenname(), 
-																  "auto_followed_on" => "",
-																  "protected" => 1));
-			echo "still have " . $users_to_follow->num_rows() . " users to auto follow<br>";
-			while($num_followed < MAX_FOLLOW_PER_DAY && $user_to_follow = $users_to_follow->fetch_array()){
-				if($user_to_follow["is_following_us"]){
-					// user is already following us,
-					// so we don't need to auto-follow them
-					$user_to_follow["auto_followed_on"] = date("Y-m-d");
-					$db->table("followers")->save($user_to_follow);
-					$num_followed++;
-					
-					echo "user " . $user_to_follow["screen_name"] . " is already following " . $twitter->screenname() . "<br>";
-				}else{
-					
-					echo "checking relationship with " . $user_to_follow["screen_name"] . "<br>";
-					
-					$status = $twitter->connectionStatus($user_to_follow["screen_name"]);
+		$results = $db->table("auto_follow")->find(array("screen_name" => $twitter->screenname()));
+		while($user_to_leech = $results->fetch_array()){
+			echo " - refreshing follower status of " . $user_to_leech["to_follow"] . " on behalf of " . $twitter->screenname() . "<br>\n";
+			
+			// slowly update the following status of the users
+			$users_to_update_status = $db->table("followers")->find(array("owner_account" => $twitter->screenname(), 
+																		  "follow_status_updated_on" => date("Y-m-d"),
+																		  "found_via" => $user_to_leech["to_follow"]),
+																	array("follow_status_updated_on" => "!="));;
+																	
+			echo " - - need to update follow status for " . $users_to_update_status->num_rows() . " users<br>\n";
+			if($user = $users_to_update_status->fetch_array()){
+				echo " - - checking follow status of " . $user["screen_name"] . " to " . $twitter->screenname() . "...<br>\n";
+				$status = $twitter->connectionStatus($user["screen_name"]);
+				if($status["error"]){
+					echo " - - API error<br>\n";
 					prettyPrint($status);
-					
-					if(!in_array("following", $status) &&
-					   !in_array("followed_by", $status) &&
-					   !$user_to_follow["protected"]){
-						   
-						   // only follow them if we aren't already
-						   // following them + aren't already
-						   // followed by them
-						   //
-						   // and also make sure their timeline
-						   // isn't protected
-						echo "auto-following user " . $user_to_follow["screen_name"] . " from account " . $twitter->screenname() . "<br>";
-	
-						$twitter->follow($user_to_follow["screen_name"]);
+					echo "<br>\n";
+				}else{
+					if(in_array("following", $status)){
+						echo " - - we're already following " . $user["screen_name"] . "<br>\n";
+						if(!$user["auto_followed_on"]){
+							$user["auto_followed_on"] = date("Y-m-d");
+						}
+						$user["is_following_them"] = true;
 					}else{
-						echo "skipping " . $user_to_follow["screen_name"] . ".<br>";
-						if($user_to_follow["protected"]){
-							echo "user timeline is protected<br>";
+						echo " - - we're not already following " . $user["screen_name"] . "<br>\n";
+						$user["is_following_them"] = false;
+					}
+					if(in_array("followed_by", $status)){
+						$user["is_following_us"] = true;
+					}else{
+						$user["is_following_us"] = false;
+					}
+					$user["follow_status_updated_on"] = date("Y-m-d");
+					$db->table("followers")->save($user);
+				}
+			}
+			flush();
+			sleep(1);
+		
+		
+			$max_allowed_so_far_today = MAX_FOLLOW_PER_DAY * (((int)date('G')) + 1) / 24;
+		
+			//
+			// next, find out if we need to follow any more users
+			// from this account today. limit to following 20 / day
+			if($user_to_leech["to_follow"] != $twitter->screenname()){
+				$num_followed = $db->table("followers")->find(array("owner_account" => $twitter->screenname(), 
+													"found_via" => $user_to_leech["to_follow"],
+													"auto_followed_on" => date("Y-m-d")))->num_rows();
+	
+				echo " -  - num followed so far today: " . $num_followed . " / " . $max_allowed_so_far_today . "<br>\n";
+				if($num_followed < $max_allowed_so_far_today){
+					$users_to_follow = $db->table("followers")->find(array("owner_account" => $twitter->screenname(), 
+																		   "found_via" => $user_to_leech["to_follow"],
+																		   "auto_followed_on" => ""));
+					echo " - - - still have " . $users_to_follow->num_rows() . " users to auto follow<br>\n";
+					while($num_followed < $max_allowed_so_far_today && $user_to_follow = $users_to_follow->fetch_array()){
+						if($user_to_follow["is_following_us"]){
+							// user is already following us,
+							// so we don't need to auto-follow them
+							$user_to_follow["auto_followed_on"] = date("Y-m-d");
+							$db->table("followers")->save($user_to_follow);
+							$num_followed++;
+							
+							echo " - - - user " . $user_to_follow["screen_name"] . " is already following " . $twitter->screenname() . "<br>\n";
+						}else{
+							
+							echo "checking relationship with " . $user_to_follow["screen_name"] . "<br>\n";
+							
+							$status = $twitter->connectionStatus($user_to_follow["screen_name"]);
+							
+							if(!in_array("following", $status) &&
+							   !in_array("followed_by", $status) &&
+							   !$user_to_follow["protected"]){
+								   
+								   // only follow them if we aren't already
+								   // following them + aren't already
+								   // followed by them
+								   //
+								   // and also make sure their timeline
+								   // isn't protected
+								echo " - - - auto-following user " . $user_to_follow["screen_name"] . " from account " . $twitter->screenname() . "<br>\n";
+			
+								$twitter->follow($user_to_follow["screen_name"]);
+								$user_to_follow["is_following_them"] = true;
+							}else{
+								echo " - - - skipping " . $user_to_follow["screen_name"] . ".<br>\n";
+								if($user_to_follow["protected"]){
+									echo " - - - user timeline is protected<br>\n";
+								}
+								if(in_array("following", $status)){
+									$user_to_follow["is_following_them"] = true;
+								}
+							}
+							$user_to_follow["auto_followed_on"] = date("Y-m-d");
+							$db->table("followers")->save($user_to_follow);
+							$num_followed++;
+							
+							break;
 						}
 					}
-					$user_to_follow["auto_followed_on"] = date("Y-m-d");
-					$db->table("followers")->save($user_to_follow);
-					$num_followed++;
-					
-					break;
+				}else{
+					echo "Finished auto-following for the day for " . $user_to_leech["to_follow"] . "<br>\n";
 				}
+			}else{
+				echo "Won't auto-follow my own followers<br>\n";
 			}
+
+
 		}
 
-
-		echo "<br>";
+		echo "<br>\n";
 	}
 	
 	
@@ -314,14 +346,14 @@ echo "<html><head><link rel=stylesheet type='text/css' href='style.css'/></head>
 if($app->isLoggedIn()){
 	$my_name = $app->twitter()->screenname();
 	echo "logged in as " . $my_name . " ";
-	echo "<a href='" . page_self_url() . "?logout" . "'>Log Out</a><br><br>";
+	echo "<a href='" . page_self_url() . "?logout" . "'>Log Out</a><br>\n<br>\n";
 	
 	if(isset($_REQUEST["msg"]) && strlen($_REQUEST["msg"])){
 		echo "<div class='message'>" . $_REQUEST["msg"] . "</div>";
 	}
 	
 	include "tables/auto-follow.php";
-	echo "<br><br>";
+	echo "<br>\n<br>\n";
 	if(isset($_REQUEST["show_followers_for"])){
 		include "tables/followers-for.php";
 	}else{
